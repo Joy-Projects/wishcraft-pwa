@@ -14,6 +14,27 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: Generate icons (favicon + PWA)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+          mkdir -p public/icons
+
+          # Base 512 icon (purple circle + white W)
+          convert -size 512x512 xc:none -fill "#8b5cf6" -draw "circle 256,256 256,10" \
+                  -gravity center -pointsize 260 -fill white -font DejaVu-Sans \
+                  -annotate 0 "W" public/icons/icon-512.png
+
+          # Scaled 192
+          convert public/icons/icon-512.png -resize 192x192 public/icons/icon-192.png
+
+          # Maskable: full-bleed (same art; acceptable for simple shapes)
+          cp public/icons/icon-512.png public/icons/maskable-512.png
+          cp public/icons/icon-192.png public/icons/maskable-192.png
+
+          # Favicon
+          convert public/icons/icon-512.png -resize 64x64 public/favicon.ico
 
       # Use install instead of ci (no lockfile required)
       - name: Install deps
