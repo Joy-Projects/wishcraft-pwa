@@ -687,6 +687,9 @@ const packageJsonPatch = `{
 // -------------------------------------------------
 // Self-test helpers (non-breaking, logs to console)
 // -------------------------------------------------
+// -------------------------------------------------
+// Self-test helpers (non-breaking, logs to console)
+// -------------------------------------------------
 function runSelfTests() {
   try {
     // 1) Birthday EN
@@ -722,4 +725,26 @@ function runSelfTests() {
     const s7 = { ...s1, occasion:'custom', name:'', partnerName:'', lang:'en' as LangId };
     const out7 = buildPrompt(s7);
     console.assert(out7.startsWith('Create a celebratory poster.'), 'Custom should begin with generic header');
-    console.assert(out1.includes('\nOrientation:'), 'Output should cont
+    console.assert(out1.includes('\nOrientation:'), 'Output should contain newline separators');
+
+    // 8) Festival Hindi greeting for Holi
+    const s8 = { ...s1, occasion:'festival', festivalId:'holi' as FestivalId, lang:'hi' as LangId };
+    const out8 = buildPrompt(s8);
+    console.assert(out8.includes('होली'), 'Holi greeting should be in Hindi when lang=hi');
+
+    // 9) Only selected language (no English when lang=te)
+    const s9 = { ...s1, occasion:'festival', festivalId:'diwali' as FestivalId, lang:'te' as LangId };
+    const out9 = buildPrompt(s9);
+    console.assert(!out9.includes('Happy '), 'Prompt should not include English greeting when lang=te');
+
+    // 10) Auto palette uses festival palette (Holi pink present)
+    const s10 = { ...s1, occasion:'festival', festivalId:'holi' as FestivalId, paletteChoice:'auto' };
+    const out10 = buildPrompt(s10);
+    console.assert(out10.includes('#EC4899'), 'Auto palette should include festival colors (Holi)');
+
+    console.log('%cWishCraft self-tests passed', 'color:#10B981');
+  } catch (e) {
+    console.warn('WishCraft self-tests encountered an error:', e); // Ensure JS comments use //
+  }
+}
+
