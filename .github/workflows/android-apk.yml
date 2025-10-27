@@ -51,9 +51,17 @@ jobs:
       - name: Capacitor native launcher icon (optional)
         run: |
           npm i -D @capacitor/assets
-          # use the same generated art as source icon
-          npx capacitor-assets generate --icon public/icons/icon-512.png --project android
-   
+          # Ensure a default input for @capacitor/assets
+          mkdir -p assets
+          cp public/icons/icon-512.png assets/icon.png
+      
+          # Generate adaptive launcher icons into android/app/src/main/res
+          npx @capacitor/assets generate --android
+      
+          # (Optional) Re-sync after asset generation
+          npx cap sync android
+      
+         
 
       - name: Assemble debug APK
         run: cd android && ./gradlew assembleDebug
