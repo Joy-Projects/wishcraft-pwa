@@ -1,0 +1,109 @@
+name: Build Android AAB (Release)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node (with cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Java (JDK 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+            platform-tools
+
+      - name: Install deps
+        run: npm ci --no-audit --fund=false
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Ensure Capacitor + Android toolchain
+        run: |
+          if ! npx --yes --package=@capacitor/cli@6 cap --version >/dev/null 2>&1; then
+            npm i -D @capacitor/cli@6
+          fi
+          if ! npm ls @capacitor/android >/dev/null 2>&1; then
+            npm i -D @capacitor/android@6
+          fi
+          npx cap sync android
+
+      # ----- SIGNING SETUP (expects repo secrets) -----
+      - name: Decode keystore
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: Configure signing for Gradle
+        run: |
+          cat >> android/gradle.properties <<'EOF'
+          MYAPP_UPLOAD_STORE_FILE=release.keystore
+          MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}
+          MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Patch signingConfig (idempotent)
+        run: |
+          FILE=android/app/build.gradle
+          if ! grep -q "MYAPP_UPLOAD_STORE_FILE" "$FILE"; then
+            awk '
+              /android\s*{/ && !p++ {
+                print
+                print "    signingConfigs {"
+                print "        release {"
+                print "            storeFile file(MYAPP_UPLOAD_STORE_FILE)"
+                print "            storePassword MYAPP_UPLOAD_STORE_PASSWORD"
+                print "            keyAlias MYAPP_UPLOAD_KEY_ALIAS"
+                print "            keyPassword MYAPP_UPLOAD_KEY_PASSWORD"
+                print "        }"
+                print "    }"
+                next
+              }
+              /buildTypes\s*{/ && !q++ {
+                print
+                print "        release {"
+                print "            signingConfig signingConfigs.release"
+                print "            minifyEnabled true"
+                print "            shrinkResources true"
+                print "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'"
+                print "        }"
+                next
+              }
+              { print }
+            ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+          fi
+
+      - name: Ensure Gradle wrapper executable
+        run: chmod +x android/gradlew
+
+      - name: Build Release AAB
+        working-directory: android
+        run: ./gradlew --no-daemon clean bundleRelease
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WishCraft-AAB
+          path: android/app/build/outputs/bundle/release/app-release.aab
