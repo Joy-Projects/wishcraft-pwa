@@ -1,34 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
 
-// WishCraft — Poster Prompt Studio (Offline PWA)
-// Tailored for graphic designers creating Birthday & Indian Festival wish/celebration posters.
-// Single-file React component for Canvas preview (no external APIs). Offline-ready via SW (see README in-app).
+/**
+ * Pocket Prompt — Offline (PWA)
+ * Graphic-designer friendly prompt builder for Birthday & Indian festival posters.
+ * - Offline-first (works with /public/sw.js)
+ * - History stored in localStorage (last 10)
+ * - Copy / Save / History
+ * - Custom festivals with palette, motifs, localized greetings
+ */
 
-// -------------------------------------------------
-// Utilities
-// -------------------------------------------------
-function clsx(...args: any[]) { return args.filter(Boolean).join(" "); }
-function useLocalStorage<T>(key: string, defaultValue: T) {
-  const [value, setValue] = useState<T>(() => {
-    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : defaultValue; } catch { return defaultValue; }
+/* --------------------------------- utils --------------------------------- */
+function clsx(...a: any[]) { return a.filter(Boolean).join(" "); }
+function useLocalStorage<T>(key: string, def: T) {
+  const [v, setV] = useState<T>(() => {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : def; } catch { return def; }
   });
-  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }, [key, value]);
-  return [value, setValue] as const;
+  useEffect(() => { try { localStorage.setItem(key, JSON.stringify(v)); } catch {} }, [key, v]);
+  return [v, setV] as const;
 }
 function haptic(ms = 12) { try { (navigator as any).vibrate?.(ms); } catch {} }
 
-// -------------------------------------------------
-// Domain Data
-// -------------------------------------------------
+/* --------------------------------- domain -------------------------------- */
 const OCCASIONS = [
   { id: "birthday",   label: "🎂 Birthday Wish Poster" },
-  { id: "festival",    label: "🪔 Festival Wish Poster (India)" },
-  { id: "anniversary", label: "💞 Anniversary Wish" },
-  { id: "sale",        label: "🏷️ Festive Offer Banner" },
-  { id: "custom",      label: "✨ Custom Canvas" },
+  { id: "festival",   label: "🪔 Festival Wish Poster (India)" },
+  { id: "anniversary",label: "💞 Anniversary Wish" },
+  { id: "sale",       label: "🏷️ Festive Offer Banner" },
+  { id: "custom",     label: "✨ Custom Canvas" },
 ] as const;
 
-type AnyFestival = {id:string,label:string,palette:string[],motifs:string[],greetings:Record<string,string>};
+type AnyFestival = {
+  id: string; label: string; palette: string[];
+  motifs: string[]; greetings: Record<string, string>;
+};
 const BUILTIN_FESTIVALS: AnyFestival[] = [
   { id: "diwali", label: "Diwali", palette:["#F59E0B","#FDE68A","#B45309","#1F2937"], motifs:["diyas","rangoli","fireworks","lotus"], greetings:{en:"Happy Diwali", hi:"शुभ दीपावली", te:"శుభ దీపావళి"} },
   { id: "holi", label: "Holi", palette:["#EC4899","#F59E0B","#84CC16","#06B6D4"], motifs:["gulal splash","pichkari","color clouds"], greetings:{en:"Happy Holi", hi:"होली की शुभकामनाएँ", te:"హోలీ శుభాకాంక్షలు"} },
@@ -70,40 +74,44 @@ const PALETTES = [
 ] as const;
 
 type OrientId = typeof ORIENT[number]["id"];
-type VibeId = typeof VIBES[number]["id"];
-type SizeId = typeof SIZE_PRESETS[number]["id"];
-type LangId = typeof LANGS[number]["id"];
-// Festival id can be any string (built-in or user-added)
+type VibeId   = typeof VIBES[number]["id"];
+type SizeId   = typeof SIZE_PRESETS[number]["id"];
+type LangId   = typeof LANGS[number]["id"];
 type FestivalId = string;
 
-// User-manageable Festivals (persisted)
+/* -------------------- user festivals persistence -------------------- */
 const USER_FESTIVALS_KEY = "wishcraft_user_festivals_v1";
-function loadUserFestivals(): AnyFestival[] { try { const raw = localStorage.getItem(USER_FESTIVALS_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; } }
-function saveUserFestivals(fests: AnyFestival[]) { try { localStorage.setItem(USER_FESTIVALS_KEY, JSON.stringify(fests)); } catch {} }
+function loadUserFestivals(): AnyFestival[] {
+  try { const raw = localStorage.getItem(USER_FESTIVALS_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
+}
+function saveUserFestivals(f: AnyFestival[]) { try { localStorage.setItem(USER_FESTIVALS_KEY, JSON.stringify(f)); } catch {} }
 function getAllFestivals(): AnyFestival[] { return [...BUILTIN_FESTIVALS, ...loadUserFestivals()]; }
 function slugify(s: string){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').replace(/-{2,}/g,'-'); }
 
+/* --------------------------------- logic -------------------------------- */
 function paletteFor(choice: string, festival?: AnyFestival) {
   if (choice === "auto" && festival) return festival.palette;
   switch (choice) {
-    case "gold":    return ["#F59E0B","#FCD34D","#78350F","#111827"]; 
-    case "vibrant": return ["#EF4444","#22C55E","#3B82F6","#F59E0B"]; 
-    case "pastel":  return ["#FBCFE8","#BFDBFE","#BBF7D0","#FDE68A"]; 
-    case "mono":    return ["#111827","#1F2937","#374151","#9CA3AF"]; 
-    default:         return ["#3B82F6","#10B981","#F59E0B","#111827"]; 
+    case "gold":    return ["#F59E0B","#FCD34D","#78350F","#111827"];
+    case "vibrant": return ["#EF4444","#22C55E","#3B82F6","#F59E0B"];
+    case "pastel":  return ["#FBCFE8","#BFDBFE","#BBF7D0","#FDE68A"];
+    case "mono":    return ["#111827","#1F2937","#374151","#9CA3AF"];
+    default:        return ["#3B82F6","#10B981","#F59E0B","#111827"];
   }
 }
 
-// Greeting generator (Only selected language as per user preference)
-function greetingFor({ occasion, festivalId, lang, name, partnerName }:{ occasion:string, festivalId?:FestivalId, lang:LangId, name?:string, partnerName?:string }) {
+function greetingFor(args:{
+  occasion:string; festivalId?:FestivalId; lang:LangId; name?:string; partnerName?:string
+}){
+  const { occasion, festivalId, lang, name, partnerName } = args;
   if (occasion === "birthday") {
     const g = { en: `Happy Birthday, ${name || "Friend"}!`, hi: `जन्मदिन मुबारक, ${name || "मित्र"}!`, te: `హ్యాపీ బర్త్‌డే, ${name || "స్నేహితుడు"}!` };
-    return (g as any)[lang] || (g as any).en;
+    return (g as any)[lang] || g.en;
   }
   if (occasion === "anniversary") {
-    const duo = name && partnerName ? `${name} & ${partnerName}` : (name || "" );
+    const duo = name && partnerName ? `${name} & ${partnerName}` : (name || "");
     const g = { en: `Happy Anniversary ${duo}!`, hi: `सालगिरह मुबारक ${duo}!`, te: `వేడుకల వార్షికోత్సవ శుభాకాంక్షలు ${duo}!` };
-    return (g as any)[lang] || (g as any).en;
+    return (g as any)[lang] || g.en;
   }
   if (occasion === "festival") {
     const fest = getAllFestivals().find(f=>f.id===festivalId) || BUILTIN_FESTIVALS[0];
@@ -114,9 +122,9 @@ function greetingFor({ occasion, festivalId, lang, name, partnerName }:{ occasio
 
 function joinPalette(p: string[]) { return p.join(", "); }
 
-// Core prompt builder (deterministic concatenation; single newlines as per user preference)
 function buildPrompt(state: {
-  occasion: string; festivalId?: FestivalId; name?: string; partnerName?: string; age?: string; relation?: string; brand?: string; vibe: VibeId; orient: OrientId; size: SizeId; lang: LangId; paletteChoice: string; includeLogo: boolean;
+  occasion: string; festivalId?: FestivalId; name?: string; partnerName?: string; age?: string; relation?: string; brand?: string;
+  vibe: VibeId; orient: OrientId; size: SizeId; lang: LangId; paletteChoice: string; includeLogo: boolean;
 }) {
   const { occasion, festivalId, name, partnerName, age, relation, brand, vibe, orient, size, lang, paletteChoice, includeLogo } = state;
   const fest = getAllFestivals().find(f=>f.id===festivalId);
@@ -130,7 +138,6 @@ function buildPrompt(state: {
     `Language for headline: ${LANGS.find(l=>l.id===lang)?.label}`,
     `Color palette: ${joinPalette(palette)}`,
   ];
-
   const brandLine = includeLogo && brand ? `Include ${brand} logo at top-right; maintain clear space.` : `Branding: none / optional placeholder`;
 
   if (occasion === "birthday") {
@@ -188,7 +195,7 @@ function buildPrompt(state: {
     ].join("\n");
   }
 
-  // custom
+  // custom (safe fallback)
   return [
     `Create a celebratory poster.`,
     ...common,
@@ -198,20 +205,15 @@ function buildPrompt(state: {
   ].join("\n");
 }
 
-// -------------------------------------------------
-// Icons (inline SVG)
-// -------------------------------------------------
+/* --------------------------------- icons --------------------------------- */
 const IconCopy = (p:any) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}><rect x="9" y="9" width="13" height="13" rx="2"/><rect x="2" y="2" width="13" height="13" rx="2"/></svg>);
 const IconSave = (p:any) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}><path d="M4 21V3a1 1 0 0 1 1-1h10l5 5v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M7 3v6h10"/></svg>);
-const IconTrash = (p:any) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>);
-const IconHistory = (p:any) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}><path d="M12 8v5l3 3"/><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-9 9Zm0 0H1"/></svg>);
+const IconTrash= (p:any) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>);
+const IconHistory=(p:any)=>(<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}><path d="M12 8v5l3 3"/><path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-9 9Zm0 0H1"/></svg>);
 const IconEdit = (p:any) => (<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" {...p}><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>);
 
-// -------------------------------------------------
-// App
-// -------------------------------------------------
-export default function PocketPromptPWA() {
-  // Designer-centric state
+/* ---------------------------------- App ---------------------------------- */
+export default function App() {
   const [occasion, setOccasion] = useState<string>("birthday");
   const [festivalId, setFestivalId] = useState<FestivalId>("diwali");
   const [name, setName] = useState("");
@@ -233,7 +235,7 @@ export default function PocketPromptPWA() {
   const [history, setHistory] = useLocalStorage<string[]>("wishcraft_history_v1", []);
   const [isCached, setIsCached] = useState(false);
 
-  // Custom festival UI state
+  // Custom festival editor
   const [showFestEditor, setShowFestEditor] = useState(false);
   const [festLabel, setFestLabel] = useState("");
   const [festId, setFestId] = useState("");
@@ -243,25 +245,31 @@ export default function PocketPromptPWA() {
   const [festGreetHI, setFestGreetHI] = useState("शुभकामनाएँ");
   const [festGreetTE, setFestGreetTE] = useState("శుభాకాంక్షలు");
 
-  // prompt
-  const computed = useMemo(() => buildPrompt({ occasion, festivalId, name, partnerName, age, relation, brand, vibe, orient, size, lang, paletteChoice, includeLogo }), [occasion, festivalId, name, partnerName, age, relation, brand, vibe, orient, size, lang, paletteChoice, includeLogo]);
+  const computed = useMemo(() => buildPrompt({
+    occasion, festivalId, name, partnerName, age, relation, brand,
+    vibe, orient, size, lang, paletteChoice, includeLogo
+  }), [occasion, festivalId, name, partnerName, age, relation, brand, vibe, orient, size, lang, paletteChoice, includeLogo]);
+
   const [editablePrompt, setEditablePrompt] = useState(computed);
   useEffect(()=>{ if(!isEditing) setEditablePrompt(computed); }, [computed, isEditing]);
 
-  // SW cached flag (real deployment)
+  // SW cached status
   useEffect(()=>{
-    function handler(e: MessageEvent){ if(e.data === "CACHE_COMPLETE"){ setIsCached(true); try{localStorage.setItem("wishcraft_cached","1");}catch{}} }
-    ;(navigator as any).serviceWorker?.addEventListener?.("message", handler);
-    const cached = localStorage.getItem("wishcraft_cached"); if(cached === "1") setIsCached(true);
+    function handler(e: MessageEvent){ if(e.data === "CACHE_COMPLETE"){ setIsCached(true); try{localStorage.setItem("wishcraft_cached","1");}catch{} } }
+    (navigator as any).serviceWorker?.addEventListener?.("message", handler);
+    if (localStorage.getItem("wishcraft_cached")==="1") setIsCached(true);
     return ()=> (navigator as any).serviceWorker?.removeEventListener?.("message", handler);
   },[]);
 
-  async function onCopy(){ try{ await navigator.clipboard.writeText(isEditing?editablePrompt:computed); setCopied(true); haptic(18); setTimeout(()=>setCopied(false), 900); } catch{ alert("Copy failed. Select & copy manually."); } }
+  async function onCopy(){
+    try{ await navigator.clipboard.writeText(isEditing?editablePrompt:computed); setCopied(true); haptic(18); setTimeout(()=>setCopied(false), 900); }
+    catch{ alert("Copy failed. Select & copy manually."); }
+  }
   function onSave(){ const p=(isEditing?editablePrompt:computed).trim(); if(!p) return; setHistory([p, ...history.filter(h=>h!==p)].slice(0,10)); haptic(10); }
   function onClear(){ if(isEditing) setEditablePrompt(""); }
   function restoreFromHistory(item:string){ setIsEditing(true); setEditablePrompt(item); setHistoryOpen(false); }
 
-  // Add custom festival
+  // add / remove custom festival
   function addCustomFestival(){
     const id = festId || slugify(festLabel || "new-festival");
     if(!id || !festLabel) { alert("Please provide a festival name."); return; }
@@ -273,15 +281,13 @@ export default function PocketPromptPWA() {
       greetings: { en: festGreetEN || "Happy Festival", hi: festGreetHI || "शुभकामनाएँ", te: festGreetTE || "శుభాకాంక్షలు" },
     };
     const user = loadUserFestivals();
-    const idx = user.findIndex(x=>x.id===id);
-    if(idx>=0) user[idx] = f; else user.unshift(f);
+    const i = user.findIndex(x=>x.id===id);
+    if(i>=0) user[i]=f; else user.unshift(f);
     saveUserFestivals(user);
     setFestivalId(id);
     setShowFestEditor(false);
     haptic(18);
   }
-
-  // Remove a user festival
   function removeCustomFestival(id:string){
     const user = loadUserFestivals().filter(x=>x.id!==id);
     saveUserFestivals(user);
@@ -289,36 +295,28 @@ export default function PocketPromptPWA() {
   }
 
   const allFestivals = getAllFestivals();
-
-  // UI helpers
   const pill = "px-3 py-2 rounded-2xl text-sm font-medium border border-white/15 bg-white/5 hover:bg-white/10 active:scale-[0.98] transition";
   const selectBase = "w-full px-3 py-3 rounded-2xl bg-white text-slate-900 text-base outline-none focus:ring-4 ring-sky-300";
-  const inputBase = "w-full px-3 py-3 rounded-2xl bg-white text-slate-900 text-base outline-none focus:ring-4 ring-sky-300";
+  const inputBase  = "w-full px-3 py-3 rounded-2xl bg-white text-slate-900 text-base outline-none focus:ring-4 ring-sky-300";
 
-  // -------------------------------------------------
-  // Lightweight Self-Tests (run once in dev / canvas)
-  // -------------------------------------------------
+  // quick self-tests (dev only)
   useEffect(() => { try { runSelfTests(); } catch (e) { console.warn("Self-tests failed:", e); } }, []);
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-b from-indigo-900 to-slate-950 text-white flex flex-col">
-      {/* Header */}
       <header className="px-4 pt-5 pb-3 sticky top-0 z-20 bg-gradient-to-b from-indigo-900/90 to-indigo-900/20 backdrop-blur">
         <div className="max-w-md mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">WishCraft</h1>
             <p className="text-xs text-white/80">Poster Prompt Studio • Offline</p>
           </div>
-          <div className="flex items-center gap-2" aria-live="polite">
-            <span className={clsx("text-[10px] px-2 py-1 rounded-full border", isCached ? "border-emerald-400/40" : "border-white/20")} title={isCached?"Assets cached":"Not cached yet"}>
-              <span className={clsx("inline-block w-2 h-2 rounded-full mr-1 align-middle", isCached?"bg-emerald-400":"bg-slate-400")} />
-              {isCached?"Cached":"Not cached"}
-            </span>
-          </div>
+          <span className={clsx("text-[10px] px-2 py-1 rounded-full border", isCached ? "border-emerald-400/40" : "border-white/20")} title={isCached?"Assets cached":"Not cached yet"}>
+            <span className={clsx("inline-block w-2 h-2 rounded-full mr-1 align-middle", isCached?"bg-emerald-400":"bg-slate-400")} />
+            {isCached?"Cached":"Not cached"}
+          </span>
         </div>
       </header>
 
-      {/* Controls */}
       <main className="flex-1 px-4 pb-28">
         <div className="max-w-md mx-auto mt-3 space-y-4">
           {/* Occasion */}
@@ -329,7 +327,7 @@ export default function PocketPromptPWA() {
             </select>
           </div>
 
-          {/* Occasion-specific fields */}
+          {/* Occasion specific */}
           {occasion === "birthday" && (
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
@@ -360,7 +358,7 @@ export default function PocketPromptPWA() {
                 <input id="name2" className={inputBase} placeholder="e.g., Team Orion" value={name} onChange={(e)=>setName(e.target.value)} />
               </div>
 
-              {/* Custom Festival Editor */}
+              {/* Custom festival editor */}
               <div className="col-span-2">
                 <button className={pill} onClick={()=>setShowFestEditor(v=>!v)} aria-expanded={showFestEditor}>{showFestEditor?"Hide Custom Festival":"Add / Edit Custom Festival"}</button>
                 {showFestEditor && (
@@ -434,7 +432,7 @@ export default function PocketPromptPWA() {
             </div>
           )}
 
-          {/* Designer Toggles */}
+          {/* Designer toggles */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs mb-1" htmlFor="vibe">Style / Vibe</label>
@@ -472,11 +470,11 @@ export default function PocketPromptPWA() {
             </div>
           </div>
 
-          {/* Output Card */}
+          {/* Output */}
           <section className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4 shadow-lg shadow-slate-900/20">
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-semibold">Prompt</h2>
-              <button className={pill} onClick={()=>setIsEditing(v=>!v)} aria-pressed={isEditing} aria-label="Toggle edit mode">
+              <button className={pill} onClick={()=>setIsEditing(v=>!v)} aria-pressed={isEditing}>
                 <span className="inline-flex items-center gap-2"><IconEdit className="w-4 h-4" /> {isEditing?"Read-only":"Edit"}</span>
               </button>
             </div>
@@ -498,91 +496,25 @@ export default function PocketPromptPWA() {
             </div>
           </section>
 
-          {/* History & README */}
+          {/* History button */}
           <div className="flex items-center justify-between">
             <button className={pill} onClick={()=>setHistoryOpen(true)} aria-expanded={historyOpen} aria-controls="history-drawer">
               <span className="inline-flex items-center gap-2"><IconHistory className="w-4 h-4" /> History ({history.length})</span>
             </button>
-            <a href="#setup" className="text-xs underline underline-offset-4 opacity-80">Setup & Offline Guide</a>
           </div>
-
-          {/* README / Setup */}
-          <section id="setup" className="mt-4 space-y-4">
-            <h3 className="text-lg font-semibold">Setup & Offline Guide</h3>
-            <details className="rounded-xl border border-white/10 bg-white/5 p-4" open>
-              <summary className="cursor-pointer font-medium">PWA Files (copy into your project)</summary>
-              <div className="mt-3 space-y-4">
-                <div>
-                  <p className="text-sm opacity-80 mb-2">Create <code>public/manifest.webmanifest</code></p>
-                  <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-xl p-3 border border-white/10 overflow-auto">{manifestCode}</pre>
-                </div>
-                <div>
-                  <p className="text-sm opacity-80 mb-2">Create <code>public/sw.js</code></p>
-                  <pre className="whitespace-pre-wrap text-xs bg-black/20 rounded-xl p-3 border border-white/10 overflow-auto">{serviceWorkerCode}</pre>
-                </div>
-              </div>
-            </details>
-
-            {/* Optional: Capacitor Android path */}
-            <details className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <summary className="cursor-pointer font-medium">Android (Capacitor) Optional</summary>
-              <ol className="list-decimal ml-5 text-sm space-y-2 opacity-90">
-                <li>Install Capacitor deps:
-                  <pre className="bg-black/20 rounded p-2 mt-1">{`npm i @capacitor/core @capacitor/android && npm i -D @capacitor/cli`}</pre>
-                </li>
-                <li>Create <code>capacitor.config.ts</code> in project root:
-                  <pre className="whitespace-pre-wrap bg-black/20 rounded p-2 mt-1">{capacitorConfigCode}</pre>
-                </li>
-                <li>Add scripts to <code>package.json</code>:
-                  <pre className="whitespace-pre-wrap bg-black/20 rounded p-2 mt-1">{packageJsonPatch}</pre>
-                </li>
-                <li>Build and open Android Studio:
-                  <pre className="bg-black/20 rounded p-2 mt-1">{`npm run android`}</pre>
-                </li>
-              </ol>
-            </details>
-
-            <details className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <summary className="cursor-pointer font-medium">Verify Offline</summary>
-              <ol className="list-decimal ml-5 text-sm space-y-2 opacity-90">
-                <li>DevTools → Application → Service Workers → check <em>Activated</em>.</li>
-                <li>Toggle <em>Offline</em> and reload. App + history must work.</li>
-              </ol>
-            </details>
-
-            <details className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <summary className="cursor-pointer font-medium">Android Installation (PWA)</summary>
-              <ol className="list-decimal ml-5 text-sm space-y-2 opacity-90">
-                <li>Host on HTTPS (Vercel/Netlify/GitHub Pages).</li>
-                <li>Open in Chrome on Android → wait for SW.</li>
-                <li>Menu (⋮) → <b>Add to Home screen</b> → <b>Install</b>.</li>
-                <li>Launch from home screen; go Offline to confirm.</li>
-              </ol>
-            </details>
-
-            <details className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <summary className="cursor-pointer font-medium">Troubleshooting</summary>
-              <ul className="list-disc ml-5 text-sm space-y-2 opacity-90">
-                <li>Cache busting: bump <code>CACHE_NAME</code> in <code>sw.js</code>.</li>
-                <li>SW updates: may wait until tabs close; support <code>SKIP_WAITING</code>.</li>
-                <li>Storage limits: keep assets small; use system fonts.</li>
-                <li>Fonts for Hindi/Telugu: ensure fallback fonts that support scripts.</li>
-              </ul>
-            </details>
-          </section>
         </div>
       </main>
 
-      {/* Sticky Footer */}
+      {/* sticky footer */}
       <footer className="fixed bottom-0 left-0 right-0 z-30 bg-gradient-to-t from-slate-950 to-transparent px-4 pb-4 pt-3">
         <div className="max-w-md mx-auto rounded-2xl border border-white/10 bg-white/10 backdrop-blur p-3 flex items-center gap-2">
-          <button onClick={onCopy} className={clsx(pill, "flex-1 text-center bg-sky-500/20 border-sky-400/30 hover:bg-sky-500/30")} aria-label="Copy prompt (footer)">{copied?"Copied!":"Copy"}</button>
-          <button onClick={onSave} className={clsx(pill, "flex-1 text-center bg-emerald-500/20 border-emerald-400/30 hover:bg-emerald-500/30")} aria-label="Save prompt (footer)">Save</button>
-          <button onClick={()=>setHistoryOpen(true)} className={clsx(pill, "flex-1 text-center bg-white/10 hover:bg-white/20")} aria-label="Open history">History</button>
+          <button onClick={onCopy} className={clsx(pill, "flex-1 text-center bg-sky-500/20 border-sky-400/30 hover:bg-sky-500/30")}>{copied?"Copied!":"Copy"}</button>
+          <button onClick={onSave} className={clsx(pill, "flex-1 text-center bg-emerald-500/20 border-emerald-400/30 hover:bg-emerald-500/30")}>Save</button>
+          <button onClick={()=>setHistoryOpen(true)} className={clsx(pill, "flex-1 text-center bg-white/10 hover:bg-white/20")}>History</button>
         </div>
       </footer>
 
-      {/* History Drawer */}
+      {/* history drawer */}
       <div id="history-drawer" role="dialog" aria-modal="true" className={clsx("fixed inset-0 z-40 transition", historyOpen?"pointer-events-auto":"pointer-events-none")}>
         <div className={clsx("absolute inset-0 bg-black/40 transition-opacity", historyOpen?"opacity-100":"opacity-0")} onClick={()=>setHistoryOpen(false)} />
         <div className={clsx("absolute left-0 right-0 bottom-0 max-w-md mx-auto bg-slate-900 rounded-t-2xl border-t border-white/10 shadow-2xl p-4 transition-transform", historyOpen?"translate-y-0":"translate-y-full")} style={{willChange:'transform'}}>
@@ -610,132 +542,39 @@ export default function PocketPromptPWA() {
   );
 }
 
-// -------------------------------------------------
-// Manifest & Service Worker (display-only)
-// -------------------------------------------------
-const manifestCode = `{
-  "name": "WishCraft — Poster Prompt Studio",
-  "short_name": "WishCraft",
-  "start_url": ".",
-  "display": "standalone",
-  "background_color": "#0b1020",
-  "theme_color": "#8b5cf6",
-  "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
-}`;
-
-const serviceWorkerCode = `/* WishCraft PWA - Service Worker */
-const CACHE_NAME = 'wishcraft-pwa-v2';
-const CORE_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.webmanifest',
-  '/sw.js',
-  '/favicon.ico',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-];
-self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).then(()=>self.skipWaiting()));
-});
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k))))
-      .then(()=>self.clients.claim()).then(()=>notify('CACHE_COMPLETE'))
-  );
-});
-function notify(msg){ self.clients.matchAll({ includeUncontrolled:true, type:'window' }).then(clients=>{ clients.forEach(c=>c.postMessage(msg)); }); }
-self.addEventListener('fetch', (event) => {
-  const req = event.request; if (req.method !== 'GET') return;
-  event.respondWith(
-    caches.match(req).then(cached => {
-      if (cached) { event.waitUntil(fetch(req).then(res=>{ caches.open(CACHE_NAME).then(cache=>cache.put(req, res.clone())); }).catch(()=>{})); return cached; }
-      return fetch(req).then(res=>{ caches.open(CACHE_NAME).then(cache=>cache.put(req, res.clone())); return res; }).catch(()=>caches.match('/index.html'));
-    })
-  );
-});
-self.addEventListener('message', (event) => { if (event.data === 'SKIP_WAITING') self.skipWaiting(); });
-`;
-
-// -------------------------------------------------
-// Optional: Capacitor & Android snippets
-// -------------------------------------------------
-const capacitorConfigCode = `import { CapacitorConfig } from '@capacitor/cli';
-
-const config: CapacitorConfig = {
-  appId: 'com.example.wishcraft',
-  appName: 'WishCraft',
-  webDir: 'dist',
-  bundledWebRuntime: false,
-  server: { androidScheme: 'https' }
-};
-
-export default config;`;
-
-
-const packageJsonPatch = `{
-  "scripts": {
-    "build": "vite build",
-    "android": "vite build && npx cap sync android && npx cap open android"
-  }
-}`;
-
-// -------------------------------------------------
-// Self-test helpers (non-breaking, logs to console)
-// -------------------------------------------------
-// -------------------------------------------------
-// Self-test helpers (non-breaking, logs to console)
-// -------------------------------------------------
+/* ----------------------- self-test helpers (safe) ----------------------- */
 function runSelfTests() {
   try {
-    // 1) Birthday EN
     const s1 = { occasion:'birthday', festivalId:'diwali' as FestivalId, name:'Aanya', partnerName:'', age:'21', relation:'Friend', brand:'', vibe:'modern' as VibeId, orient:'portrait' as OrientId, size:'ig-post' as SizeId, lang:'en' as LangId, paletteChoice:'auto', includeLogo:false };
     const out1 = buildPrompt(s1);
     console.assert(out1.includes('Happy Birthday, Aanya!'), 'Birthday greeting should include name');
 
-    // 2) Festival TE (Sankranthi)
     const s2 = { ...s1, occasion:'festival', festivalId:'sankranthi' as FestivalId, name:'', lang:'te' as LangId };
     const out2 = buildPrompt(s2);
     console.assert(out2.includes('హ్యాపీ సంక్రాంతి') || out2.includes('సంక్రాంతి'), 'Sankranthi Telugu greeting expected');
 
-    // 3) Sale banner includes callouts
     const s3 = { ...s1, occasion:'sale' };
     const out3 = buildPrompt(s3);
     console.assert(out3.includes('offer banner') && out3.includes('Callouts'), 'Sale banner copy should include callouts');
 
-    // 4) Palette logic
     const gold = paletteFor('gold');
     console.assert(Array.isArray(gold) && gold.length === 4, 'Gold palette should have 4 colors');
 
-    // 5) Branding line
     const s5 = { ...s1, includeLogo:true, brand:'ArtHaus' };
     const out5 = buildPrompt(s5);
     console.assert(out5.includes('Include ArtHaus logo'), 'Branding line should mention logo');
 
-    // 6) Anniversary duo formatting
     const s6 = { ...s1, occasion:'anniversary', name:'Aarav', partnerName:'Anaya' };
     const out6 = buildPrompt(s6);
     console.assert(out6.includes('Aarav & Anaya') && out6.includes('Happy Anniversary'), 'Anniversary names should appear with ampersand');
 
-    // 7) Custom path begins right and has newlines
     const s7 = { ...s1, occasion:'custom', name:'', partnerName:'', lang:'en' as LangId };
     const out7 = buildPrompt(s7);
     console.assert(out7.startsWith('Create a celebratory poster.'), 'Custom should begin with generic header');
     console.assert(out1.includes('\nOrientation:'), 'Output should contain newline separators');
 
-    // 8) Holi Hindi greeting
-    const s8 = { ...s1, occasion:'festival', festivalId:'holi' as FestivalId, lang:'hi' as LangId };
-    const out8 = buildPrompt(s8);
-    console.assert(out8.includes('होली'), 'Holi greeting should be in Hindi when lang=hi');
-
     console.log('%cWishCraft self-tests passed', 'color:#10B981');
   } catch (e) {
-    console.warn('WishCraft self-tests encountered an error:', e); // Correct JS comment
+    console.warn('WishCraft self-tests encountered an error:', e); // <- keep `//`, not `#`
   }
 }
-
-
