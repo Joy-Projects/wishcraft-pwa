@@ -70,18 +70,34 @@ jobs:
           fi
 
       # Make sure PWA icons exist so the build never fails on missing files
-      - name: Ensure PWA icons
+      - name: Ensure PWA Icons
+        shell: bash
         run: |
-          sudo apt-get update && sudo apt-get install -y imagemagick
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
           mkdir -p public/icons
-          if [ ! -f public/icons/icon-192.png ] || [ ! -f public/icons/icon-512.png ]; then
-            SRC=${SRC:-public/icon.png}
-            if [ ! -f "$SRC" ]; then SRC=/usr/share/icons/hicolor/512x512/apps/computer.png; fi
-            convert "$SRC" -resize 192x192 public/icons/icon-192.png
-            convert "$SRC" -resize 512x512 public/icons/icon-512.png
-            cp public/icons/icon-192.png public/icons/maskable-192.png
-            cp public/icons/icon-512.png public/icons/maskable-512.png
+
+          # Pick a source icon if you already committed one.
+          if [ -f public/icon.png ]; then
+            SRC=public/icon.png
+          elif [ -f public/icons/icon-512.png ]; then
+            SRC=public/icons/icon-512.png
+          else
+            echo "No source icon found; creating a placeholder."
+            # Simple solid square placeholder (no fonts needed).
+            convert -size 512x512 xc:"#4f46e5" public/icon-source.png
+            SRC=public/icon-source.png
           fi
+
+          # Generate the sizes your manifest references
+          convert "$SRC" -resize 192x192 public/icons/icon-192.png
+          convert "$SRC" -resize 512x512 public/icons/icon-512.png
+          # maskable copies (works for now even if not truly maskable)
+          cp public/icons/icon-192.png public/icons/maskable-192.png
+          cp public/icons/icon-512.png public/icons/maskable-512.png
+
 
       - name: Build web bundle
         run: npm run build
