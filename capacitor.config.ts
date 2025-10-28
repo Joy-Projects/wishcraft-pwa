@@ -1,11 +1,11 @@
-import { CapacitorConfig } from '@capacitor/cli'
+import { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: 'com.example.wishcraft',
-  appName: 'WishCraft',
-  webDir: 'dist',
+  appId: "com.example.wishcraft",
+  appName: "WishCraft",
+  webDir: "dist",
   bundledWebRuntime: false,
-  server: { androidScheme: 'https' }
-}
+  server: { androidScheme: "https" }
+};
 
-export default config
+export default config;
