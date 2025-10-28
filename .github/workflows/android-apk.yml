@@ -102,10 +102,25 @@ jobs:
       - name: Build web bundle
         run: npm run build
 
+      # Make sure Capacitor CLI and the Android platform package exist in CI
+      - name: Ensure Capacitor toolchain
+        run: |
+          # CLI should already be in devDependencies, but ensure it anyway
+          if ! npx --yes --package=@capacitor/cli@6 cap --version >/dev/null 2>&1; then
+            npm i -D @capacitor/cli@6
+          fi
+          # Ensure the Android platform package is present (idempotent)
+          if ! npm ls @capacitor/android >/dev/null 2>&1; then
+            npm i -D @capacitor/android@6
+          fi
+
       - name: Add Android platform (Capacitor)
         run: |
-          npx --yes @capacitor/cli@6 cap add android || true
-          npx --yes @capacitor/cli@6 cap sync android
+          # Use the binary directly via npx (this avoids the "Unknown command: cap" problem)
+          npx cap add android || true
+          npx cap sync android
+          # make sure the gradle wrapper is executable
+          chmod +x android/gradlew
 
       - name: Assemble debug APK
         working-directory: android
