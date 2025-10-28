@@ -5,72 +5,62 @@ on:
   push:
     branches: [ "main" ]
 
-concurrency:
-  group: android-debug-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
-    env:
-      # Use fixed locations so we never rely on PATH magic
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      NODE_OPTIONS: --max_old_space_size=4096
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Node with/without cache (works whether or not you have a lockfile)
+      # Node with cache if a lockfile exists, otherwise no-cache
       - name: Setup Node (with cache)
-        if: ${{ hashFiles('**/package-lock.json','**/npm-shrinkwrap.json','**/yarn.lock') != '' }}
+        if: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json', '**/yarn.lock') != '' }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
       - name: Setup Node (no cache)
-        if: ${{ hashFiles('**/package-lock.json','**/npm-shrinkwrap.json','**/yarn.lock') == '' }}
+        if: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json', '**/yarn.lock') == '' }}
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
       - name: Setup Java (JDK 17)
-        id: java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # Bootstrap the SDK only (no packages yet)
+      # Download / lay out commandline-tools and set ANDROID_SDK_ROOT
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # Deterministic install of cmdline-tools + required packages
+      # 1) Accept licenses deterministically
+      - name: Accept Android licenses
+        run: yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
+
+      # 2) Install the exact packages we need with retries (handles "Computing updates...")
       - name: Install Android platform & build tools
-        shell: bash
+        env:
+          SDKMAN: ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager
+          ROOT: ${{ env.ANDROID_SDK_ROOT }}
         run: |
           set -euxo pipefail
-          CT="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          for i in 1 2 3; do
+            yes | "$SDKMAN" --sdk_root="$ROOT" \
+              "platform-tools" \
+              "platforms;android-34" \
+              "build-tools;34.0.0" && break || {
+              echo "sdkmanager failed (attempt $i). Retrying in $((i*20))s…"
+              sleep $((i*20))
+            }
+          done
+          "$ANDROID_SDK_ROOT/platform-tools/adb" --version || true
 
-          # Ensure newest cmdline-tools exists
-          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" "cmdline-tools;latest" || true
-          # After installing latest, re-point to the same path again (idempotent)
-          CT="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-
-          # Install platform + build-tools + platform-tools
-          yes | "$CT" --sdk_root="$ANDROID_SDK_ROOT" \
-            "platform-tools" \
-            "build-tools;34.0.0" \
-            "platforms;android-34"
-
-          # Accept licenses
-          yes | "$CT" --sdk_root="$ANDROID_SDK_ROOT" --licenses
-
-      # Install JS deps (ci when lockfile exists, otherwise install)
+      # Install JS deps
       - name: Install deps
         run: |
           if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
@@ -79,13 +69,14 @@ jobs:
             npm install --no-audit --fund=false
           fi
 
-      # Optional: ensure icons exist so PWA build doesn't miss them
-      - name: Ensure PWA Icons
+      # Make sure PWA icons exist so the build never fails on missing files
+      - name: Ensure PWA icons
         run: |
           sudo apt-get update && sudo apt-get install -y imagemagick
           mkdir -p public/icons
           if [ ! -f public/icons/icon-192.png ] || [ ! -f public/icons/icon-512.png ]; then
-            if [ -f public/icon.png ]; then SRC=public/icon.png; else SRC=/usr/share/icons/hicolor/512x512/apps/computer.png; fi
+            SRC=${SRC:-public/icon.png}
+            if [ ! -f "$SRC" ]; then SRC=/usr/share/icons/hicolor/512x512/apps/computer.png; fi
             convert "$SRC" -resize 192x192 public/icons/icon-192.png
             convert "$SRC" -resize 512x512 public/icons/icon-512.png
             cp public/icons/icon-192.png public/icons/maskable-192.png
@@ -95,10 +86,10 @@ jobs:
       - name: Build web bundle
         run: npm run build
 
-      - name: Add & Sync Android platform (Capacitor)
+      - name: Add Android platform (Capacitor)
         run: |
-          npx --yes @capacitor/cli@latest cap add android || true
-          npx --yes @capacitor/cli@latest cap sync android
+          npx --yes @capacitor/cli@6 cap add android || true
+          npx --yes @capacitor/cli@6 cap sync android
 
       - name: Assemble debug APK
         working-directory: android
