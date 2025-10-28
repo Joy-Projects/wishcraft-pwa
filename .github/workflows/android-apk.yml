@@ -1,105 +1,41 @@
 name: Build Android APK (Debug)
-
-on:
-  workflow_dispatch:
-  push:
-    branches: ["main"]
-
+on: [workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      CI: false
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # --- Node set up (with/without cache) ---------------------------------
-      - name: Setup Node (with cache)
-        if: ${{ hashFiles('**/package-lock.json') != '' || hashFiles('**/yarn.lock') != '' || hashFiles('**/npm-shrinkwrap.json') != '' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            npm-shrinkwrap.json
-            yarn.lock
-
-      - name: Setup Node (no cache)
-        if: ${{ hashFiles('**/package-lock.json') == '' && hashFiles('**/yarn.lock') == '' && hashFiles('**/npm-shrinkwrap.json') == '' }}
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # --- Java & Android SDK -----------------------------------------------
-      - name: Setup Java (JDK 17)
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: 17
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            cmdline-tools;latest
-            platform-tools
-            platforms;android-34
-            build-tools;34.0.0
-
-      # Extra safety: accept licenses explicitly (ok to keep even if action does it)
-      - name: Accept Android licenses
-        run: yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
-
-      # --- Install dependencies ---------------------------------------------
+      # Use install instead of ci (no lockfile required)
       - name: Install deps
-        run: |
-          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-            echo "Using npm ci (lockfile found)"
-            npm ci --no-audit --fund=false
-          else
-            echo "Using npm install (no lockfile)"
-            npm install --no-audit --fund=false
-          fi
+        run: npm install --no-audit --fund=false
 
-      # --- Ensure icons (optional convenience) ------------------------------
-      - name: Ensure PWA Icons
-        run: |
-          sudo apt-get update && sudo apt-get install -y imagemagick
-          mkdir -p public/icons
-          if [ ! -f public/icons/icon-192.png ] || [ ! -f public/icons/icon-512.png ]; then
-            if [ -f public/icon.png ]; then SRC=public/icon.png; else SRC=/usr/share/icons/hicolor/512x512/apps/computer.png; fi
-            convert "$SRC" -resize 192x192 public/icons/icon-192.png
-            convert "$SRC" -resize 512x512 public/icons/icon-512.png
-            cp public/icons/icon-192.png public/icons/maskable-192.png
-            cp public/icons/icon-512.png public/icons/maskable-512.png
-          fi
-
-      # --- Build & Capacitor ------------------------------------------------
       - name: Build web bundle
         run: npm run build
 
-      - name: Add Android platform (Capacitor)
+      # Generate android/ if it doesn't exist yet and sync
+      - name: Add & sync Android platform
         run: |
-          npx --yes @capacitor/cli@6 cap add android || true
-          npx --yes @capacitor/cli@6 cap sync android
-
-      # --- Assemble APK & Upload -------------------------------------------
+          npx cap add android || true
+          npx cap sync android
       - name: Assemble debug APK
-        working-directory: android
-        run: ./gradlew --no-daemon assembleDebug
+        run: cd android && ./gradlew assembleDebug
 
       - name: Zip APK
         run: |
-          mkdir -p artifacts
-          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/WishCraft-APK-debug.apk
-
+          cd android/app/build/outputs/apk/debug
+          zip -r WishCraft-debug-${{ github.run_number }}.zip app-debug.apk
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WishCraft-APK
-          path: artifacts/WishCraft-APK-debug.apk
+          name: WishCraft-APK-ZIP
+          path: android/app/build/outputs/apk/debug/WishCraft-debug-*.zip
