@@ -1,78 +1,74 @@
 name: Build Android APK (Debug)
-on: [workflow_dispatch]
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '20'
+          cache: 'npm'
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java (JDK 17)
+        uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: 17
-      - name: Generate icons (favicon + PWA)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y imagemagick
+          distribution: 'temurin'
+          java-version: '17'
 
-          mkdir -p public/icons
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-34
+            build-tools;34.0.0
+            platform-tools
 
-          # Base 512 icon (purple circle + white W)
-          convert -size 512x512 xc:none -fill "#8b5cf6" -draw "circle 256,256 256,10" \
-                  -gravity center -pointsize 260 -fill white -font DejaVu-Sans \
-                  -annotate 0 "W" public/icons/icon-512.png
-
-          # Scaled 192
-          convert public/icons/icon-512.png -resize 192x192 public/icons/icon-192.png
-
-          # Maskable: full-bleed (same art; acceptable for simple shapes)
-          cp public/icons/icon-512.png public/icons/maskable-512.png
-          cp public/icons/icon-192.png public/icons/maskable-192.png
-
-          # Favicon
-          convert public/icons/icon-512.png -resize 64x64 public/favicon.ico
-
-      # Use install instead of ci (no lockfile required)
       - name: Install deps
-        run: npm install --no-audit --fund=false
+        run: npm ci
+
+      # (Optional) Generate icons from a single source if icons are missing
+      - name: Ensure PWA Icons
+        run: |
+          sudo apt-get update && sudo apt-get install -y imagemagick
+          mkdir -p public/icons
+          if [ ! -f public/icons/icon-192.png ] || [ ! -f public/icons/icon-512.png ]; then
+            if [ -f public/icon.png ]; then SRC=public/icon.png; else SRC=/usr/share/icons/hicolor/512x512/apps/computer.png; fi
+            convert "$SRC" -resize 192x192 public/icons/icon-192.png
+            convert "$SRC" -resize 512x512 public/icons/icon-512.png
+            cp public/icons/icon-192.png public/icons/maskable-192.png
+            cp public/icons/icon-512.png public/icons/maskable-512.png
+          fi
 
       - name: Build web bundle
         run: npm run build
 
-      # Generate android/ if it doesn't exist yet and sync
-      - name: Add & sync Android platform
+      - name: Add Android platform (Capacitor)
         run: |
-          npx cap add android || true
-          npx cap sync android
-      - name: Capacitor native launcher icon (optional)
-        run: |
-          npm i -D @capacitor/assets
-          # Ensure a default input for @capacitor/assets
-          mkdir -p assets
-          cp public/icons/icon-512.png assets/icon.png
-      
-          # Generate adaptive launcher icons into android/app/src/main/res
-          npx @capacitor/assets generate --android
-      
-          # (Optional) Re-sync after asset generation
-          npx cap sync android
-      
-         
+          npx --yes @capacitor/cli@latest cap add android || true
+          npx --yes @capacitor/cli@latest cap sync android
 
       - name: Assemble debug APK
-        run: cd android && ./gradlew assembleDebug
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
 
       - name: Zip APK
         run: |
-          cd android/app/build/outputs/apk/debug
-          zip -r WishCraft-debug-${{ github.run_number }}.zip app-debug.apk
+          mkdir -p artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk artifacts/WishCraft-APK-debug.apk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: WishCraft-APK-ZIP
-          path: android/app/build/outputs/apk/debug/WishCraft-debug-*.zip
+          name: WishCraft-APK
+          path: artifacts/WishCraft-APK-debug.apk
