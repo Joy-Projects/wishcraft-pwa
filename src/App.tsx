@@ -545,36 +545,59 @@ export default function App() {
 /* ----------------------- self-test helpers (safe) ----------------------- */
 function runSelfTests() {
   try {
-    const s1 = { occasion:'birthday', festivalId:'diwali' as FestivalId, name:'Aanya', partnerName:'', age:'21', relation:'Friend', brand:'', vibe:'modern' as VibeId, orient:'portrait' as OrientId, size:'ig-post' as SizeId, lang:'en' as LangId, paletteChoice:'auto', includeLogo:false };
+    const s1 = {
+      occasion: 'birthday',
+      festivalId: 'diwali' as FestivalId,
+      name: 'Aanya',
+      partnerName: '',
+      age: '21',
+      relation: 'Friend',
+      brand: '',
+      vibe: 'modern' as VibeId,
+      orient: 'portrait' as OrientId,
+      size: 'ig-post' as SizeId,
+      lang: 'en' as LangId,
+      paletteChoice: 'auto',
+      includeLogo: false,
+    };
     const out1 = buildPrompt(s1);
     console.assert(out1.includes('Happy Birthday, Aanya!'), 'Birthday greeting should include name');
 
-    const s2 = { ...s1, occasion:'festival', festivalId:'sankranthi' as FestivalId, name:'', lang:'te' as LangId };
+    const s2 = { ...s1, occasion: 'festival', festivalId: 'sankranthi' as FestivalId, name: '', lang: 'te' as LangId };
     const out2 = buildPrompt(s2);
-    console.assert(out2.includes('హ్యాపీ సంక్రాంతి') || out2.includes('సంక్రాంతి'), 'Sankranthi Telugu greeting expected');
+    console.assert(
+      out2.includes('హ్యాపీ సంక్రాంతి') || out2.includes('సంక్రాంతి'),
+      'Sankranthi Telugu greeting expected'
+    );
 
-    const s3 = { ...s1, occasion:'sale' };
+    const s3 = { ...s1, occasion: 'sale' };
     const out3 = buildPrompt(s3);
     console.assert(out3.includes('offer banner') && out3.includes('Callouts'), 'Sale banner copy should include callouts');
 
     const gold = paletteFor('gold');
     console.assert(Array.isArray(gold) && gold.length === 4, 'Gold palette should have 4 colors');
 
-    const s5 = { ...s1, includeLogo:true, brand:'ArtHaus' };
+    const s5 = { ...s1, includeLogo: true, brand: 'ArtHaus' };
     const out5 = buildPrompt(s5);
     console.assert(out5.includes('Include ArtHaus logo'), 'Branding line should mention logo');
 
-    const s6 = { ...s1, occasion:'anniversary', name:'Aarav', partnerName:'Anaya' };
+    const s6 = { ...s1, occasion: 'anniversary', name: 'Aarav', partnerName: 'Anaya' };
     const out6 = buildPrompt(s6);
-    console.assert(out6.includes('Aarav & Anaya') && out6.includes('Happy Anniversary'), 'Anniversary names should appear with ampersand');
+    console.assert(
+      out6.includes('Aarav & Anaya') && out6.includes('Happy Anniversary'),
+      'Anniversary names should appear with ampersand'
+    );
 
-    const s7 = { ...s1, occasion:'custom', name:'', partnerName:'', lang:'en' as LangId };
+    const s7 = { ...s1, occasion: 'custom', name: '', partnerName: '', lang: 'en' as LangId };
     const out7 = buildPrompt(s7);
+    // ↓↓↓ This exact line was the one that tends to break when quotes/paren go missing
     console.assert(out7.startsWith('Create a celebratory poster.'), 'Custom should begin with generic header');
+
     console.assert(out1.includes('\nOrientation:'), 'Output should contain newline separators');
 
     console.log('%cWishCraft self-tests passed', 'color:#10B981');
   } catch (e) {
-    console.warn('WishCraft self-tests encountered an error:', e); // <- keep `//`, not `#`
+    console.warn('WishCraft self-tests encountered an error:', e);
   }
 }
+
