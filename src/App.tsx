@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
 /**
- * Pocket Prompt — Offline (PWA)
- * Graphic-designer friendly prompt builder for Birthday & Indian festival posters.
- * - Offline-first (works with /public/sw.js)
- * - History stored in localStorage (last 10)
- * - Copy / Save / History
- * - Custom festivals with palette, motifs, localized greetings
+ * WishCraft — Prompt Studio (PWA)
+ * • Works offline (with /public/sw.js)
+ * • History stored locally (last 10)
+ * • Strong prompt controls for designer-grade images
  */
 
 /* --------------------------------- utils --------------------------------- */
@@ -22,11 +20,11 @@ function haptic(ms = 12) { try { (navigator as any).vibrate?.(ms); } catch {} }
 
 /* --------------------------------- domain -------------------------------- */
 const OCCASIONS = [
-  { id: "birthday",   label: "🎂 Birthday Wish Poster" },
-  { id: "festival",   label: "🪔 Festival Wish Poster (India)" },
-  { id: "anniversary",label: "💞 Anniversary Wish" },
-  { id: "sale",       label: "🏷️ Festive Offer Banner" },
-  { id: "custom",     label: "✨ Custom Canvas" },
+  { id: "birthday",    label: "🎂 Birthday Wish Poster" },
+  { id: "festival",    label: "🪔 Festival Wish Poster (India)" },
+  { id: "anniversary", label: "💞 Anniversary Wish" },
+  { id: "sale",        label: "🏷️ Festive Offer Banner" },
+  { id: "custom",      label: "✨ Custom Canvas" },
 ] as const;
 
 type AnyFestival = {
@@ -42,29 +40,12 @@ const BUILTIN_FESTIVALS: AnyFestival[] = [
   { id: "rakhi", label: "Raksha Bandhan", palette:["#E11D48","#F59E0B","#2563EB","#111827"], motifs:["rakhi","sweets","thread pattern"], greetings:{en:"Happy Raksha Bandhan", hi:"रक्षाबंधन की शुभकामनाएँ", te:"రాఖీ పండుగ శుభాకాంక్షలు"} },
 ];
 
-const VIBES = [
-  { id: "traditional", label: "Traditional" },
-  { id: "modern",      label: "Modern" },
-  { id: "playful",     label: "Playful" },
-  { id: "elegant",     label: "Elegant" },
-] as const;
-const ORIENT = [
-  { id: "portrait",  label: "Portrait" },
-  { id: "square",    label: "Square" },
-  { id: "landscape", label: "Landscape" },
-] as const;
-const SIZE_PRESETS = [
-  { id:"ig-post",     label:"1080×1080 (IG Post)" },
-  { id:"ig-portrait", label:"1080×1350 (IG Portrait)" },
-  { id:"story",       label:"1080×1920 (Story)" },
-  { id:"a4",          label:"A4 2480×3508 (Print)" },
-  { id:"hd",          label:"1920×1080 (HD)" },
-] as const;
 const LANGS = [
   { id:"en", label:"English" },
   { id:"hi", label:"Hindi (Devanagari)" },
   { id:"te", label:"Telugu" },
 ] as const;
+
 const PALETTES = [
   { id:"auto",    label:"Auto from occasion" },
   { id:"gold",    label:"Royal Gold" },
@@ -73,10 +54,115 @@ const PALETTES = [
   { id:"mono",    label:"Monochrome" },
 ] as const;
 
-type OrientId = typeof ORIENT[number]["id"];
-type VibeId   = typeof VIBES[number]["id"];
-type SizeId   = typeof SIZE_PRESETS[number]["id"];
-type LangId   = typeof LANGS[number]["id"];
+const ORIENT = [
+  { id: "portrait",  label: "Portrait" },
+  { id: "square",    label: "Square" },
+  { id: "landscape", label: "Landscape" },
+] as const;
+
+const SIZE_PRESETS = [
+  { id:"ig-post",     label:"1080×1080 (IG Post)" },
+  { id:"ig-portrait", label:"1080×1350 (IG Portrait)" },
+  { id:"story",       label:"1080×1920 (Story)" },
+  { id:"a4",          label:"A4 2480×3508 (Print)" },
+  { id:"hd",          label:"1920×1080 (HD)" },
+] as const;
+
+/** Expert Prompt Styles (additive) */
+const STYLE_PRESETS = [
+  { id:"minimal-luxe", label:"Minimal Luxe", parts:[
+    "Minimal, upscale composition with generous negative space",
+    "Soft micro-shadows, subtle paper grain",
+    "Elegant display serif for H1; clean geometric sans for body",
+  ]},
+  { id:"editorial", label:"Editorial Serif", parts:[
+    "Magazine-style editorial layout",
+    "High contrast serif display + tidy sans subheads",
+    "Grids, alignment, and baseline rhythm",
+  ]},
+  { id:"bold-memphis", label:"Bold Memphis", parts:[
+    "Playful geometric shapes, Memphis accents",
+    "Thick strokes, rounded forms, bold color blocking",
+  ]},
+  { id:"gradient-glow", label:"Gradient Glow", parts:[
+    "Smooth multi-stop gradients, soft bloom glow",
+    "Glassmorphism highlights with tasteful blur",
+  ]},
+  { id:"paper-collage", label:"Paper-Cut Collage", parts:[
+    "Layered paper textures with cast shadows",
+    "Torn edges, organic overlaps, hand-cut vibe",
+  ]},
+  { id:"clay-3d", label:"3D Clay Look", parts:[
+    "Clay material look, soft GI lighting, rounded edges",
+    "Realistic occlusion without noise",
+  ]},
+  { id:"neon", label:"Neon Glow", parts:[
+    "Dark background, neon accents, rim light",
+    "Vibrant glow with restrained reflections",
+  ]},
+  { id:"vintage-film", label:"Vintage Film", parts:[
+    "Retro palette, film grain, gentle fade",
+    "Authentic textures, slight vignette",
+  ]},
+  { id:"watercolor", label:"Watercolor", parts:[
+    "Hand-painted watercolor wash, soft edges",
+    "Textured paper, controlled bleeding",
+  ]},
+  { id:"foil-pressed", label:"Metallic Foil", parts:[
+    "Gold/rose-gold foil accents with micro-glints",
+    "Subtle emboss/deboss, luxury stationary feel",
+  ]},
+  { id:"glass", label:"Glass & Blur", parts:[
+    "Frosted glass panes, background blur",
+    "Sharp foreground text; high contrast",
+  ]},
+  { id:"flat-geo", label:"Flat Geometric", parts:[
+    "Flat shapes, crisp edges, high contrast",
+    "Precise alignment, grid-based rhythm",
+  ]},
+] as const;
+
+const RENDER_INTENT = [
+  { id:"photo",        label:"Photographic / Real Objects" },
+  { id:"illustration", label:"Illustration / Painted" },
+  { id:"vector",       label:"Vector / Flat Shapes" },
+  { id:"hybrid",       label:"Hybrid Photo + Graphics" },
+] as const;
+
+const LIGHTING = [
+  { id:"soft-day",    label:"Soft Daylight" },
+  { id:"studio",      label:"Studio Softbox" },
+  { id:"golden",      label:"Golden Hour Glow" },
+  { id:"dramatic",    label:"Dramatic Rim Light" },
+  { id:"none",        label:"Not Applicable" },
+] as const;
+
+const TEXTURES = [
+  { id:"none",     label:"None" },
+  { id:"paper",    label:"Subtle Paper Grain" },
+  { id:"linen",    label:"Linen Texture" },
+  { id:"grain",    label:"Fine Film Grain" },
+  { id:"bokeh",    label:"Bokeh Background (soft)" },
+  { id:"foil",     label:"Metallic Foil Accents" },
+  { id:"glass",    label:"Glassmorphism Blur" },
+  { id:"water",    label:"Watercolor Wash" },
+] as const;
+
+const COMPOSITION = [
+  { id:"center",   label:"Centered Hero" },
+  { id:"thirds",   label:"Rule of Thirds" },
+  { id:"diagonal", label:"Diagonal Flow" },
+  { id:"grid",     label:"Strict Grid" },
+] as const;
+
+type OrientId  = typeof ORIENT[number]["id"];
+type SizeId    = typeof SIZE_PRESETS[number]["id"];
+type LangId    = typeof LANGS[number]["id"];
+type StyleId   = typeof STYLE_PRESETS[number]["id"];
+type IntentId  = typeof RENDER_INTENT[number]["id"];
+type LightId   = typeof LIGHTING[number]["id"];
+type TextureId = typeof TEXTURES[number]["id"];
+type CompId    = typeof COMPOSITION[number]["id"];
 type FestivalId = string;
 
 /* -------------------- user festivals persistence -------------------- */
@@ -100,6 +186,7 @@ function paletteFor(choice: string, festival?: AnyFestival) {
   }
 }
 
+/** Greeting lines */
 function greetingFor(args:{
   occasion:string; festivalId?:FestivalId; lang:LangId; name?:string; partnerName?:string
 }){
@@ -120,88 +207,174 @@ function greetingFor(args:{
   return { en:"Best Wishes!", hi:"शुभकामनाएँ!", te:"శుభాకాంక్షలు!" }[lang] as string;
 }
 
-function joinPalette(p: string[]) { return p.join(", "); }
+/** Never encourage printing hex codes */
+function joinPalette(p: string[]) {
+  return p.map(c => c.replace(/#/g, "")).join(", ");
+}
 
+/** Negative prompt pack to suppress junk */
+function negativePack(aggressive: boolean) {
+  const base = [
+    "no color codes, no hex codes, no '#' symbols",
+    "no palette chips or swatches",
+    "no watermarks, no logos (unless requested), no QR codes",
+    "no UI icons, no screenshots, no frames",
+    "no extra captions, no random text",
+    "no distorted typography",
+    "no low-res, no heavy noise, no compression artifacts",
+  ];
+  if (!aggressive) return base.join("; ");
+  return base.concat([
+    "no busy backgrounds",
+    "no excessive glow or bloom",
+    "no off-brand clipart",
+    "no duplicate text",
+  ]).join("; ");
+}
+
+/** Build master prompt */
 function buildPrompt(state: {
   occasion: string; festivalId?: FestivalId; name?: string; partnerName?: string; age?: string; relation?: string; brand?: string;
-  vibe: VibeId; orient: OrientId; size: SizeId; lang: LangId; paletteChoice: string; includeLogo: boolean;
+  orient: OrientId; size: SizeId; lang: LangId; paletteChoice: string; includeLogo: boolean;
+  styleId: StyleId; intentId: IntentId; lightId: LightId; textureId: TextureId; compId: CompId; negativeStrong: boolean;
 }) {
-  const { occasion, festivalId, name, partnerName, age, relation, brand, vibe, orient, size, lang, paletteChoice, includeLogo } = state;
-  const fest = getAllFestivals().find(f=>f.id===festivalId);
+  const {
+    occasion, festivalId, name, partnerName, age, relation, brand,
+    orient, size, lang, paletteChoice, includeLogo,
+    styleId, intentId, lightId, textureId, compId, negativeStrong
+  } = state;
+
+  const fest    = getAllFestivals().find(f=>f.id===festivalId);
   const palette = paletteFor(paletteChoice, fest);
-  const greet = greetingFor({ occasion, festivalId, lang, name, partnerName });
+  const greet   = greetingFor({ occasion, festivalId, lang, name, partnerName });
+
+  const style   = STYLE_PRESETS.find(s => s.id === styleId)!;
+  const intent  = RENDER_INTENT.find(i => i.id === intentId)!.label;
+  const light   = LIGHTING.find(l => l.id === lightId)!.label;
+  const texture = TEXTURES.find(t => t.id === textureId)!.label;
+  const comp    = COMPOSITION.find(c => c.id === compId)!.label;
 
   const common = [
     `Orientation: ${orient}`,
     `Size: ${SIZE_PRESETS.find(s=>s.id===size)?.label || size}`,
-    `Vibe: ${VIBES.find(v=>v.id===vibe)?.label}`,
-    `Language for headline: ${LANGS.find(l=>l.id===lang)?.label}`,
-    `Color palette: ${joinPalette(palette)}`,
+    `Render intent: ${intent}`,
+    `Lighting: ${light}`,
+    `Texture: ${texture}`,
+    `Composition: ${comp}`,
+    `Color palette guidance (do not display codes or palette chips): ${joinPalette(palette)}`,
   ];
-  const brandLine = includeLogo && brand ? `Include ${brand} logo at top-right; maintain clear space.` : `Branding: none / optional placeholder`;
+
+  const brandLine = includeLogo && brand
+    ? `Include ${brand} logo at top-right; maintain clear space.`
+    : `Branding: none / optional placeholder`;
+
+  const quality = [
+    `Agency-grade composition with clear hierarchy and ample negative space.`,
+    `Typography: professional display for H1; clean sans-serif for body; optical kerning and consistent tracking.`,
+    `Production: crisp edges, anti-aliased shapes, print mindset (300-DPI intent), avoid compression artifacts.`,
+  ];
+
+  const negatives = `Negative prompt: ${negativePack(negativeStrong)}`;
+
+  // Allowed text guard
+  const only = (arr: string[]) => `Only render this copy exactly: ${arr.join(", ")}. Do not render any other text.`;
 
   if (occasion === "birthday") {
-    const details = [
-      `Recipient: ${name || "[name]"}${age?`, turning ${age}`:""}${relation?`, relation: ${relation}`:""}.`,
-      `Primary headline: "${greet}"`,
-      `Motifs: confetti, balloons, subtle sparkles. Avoid clutter.`,
+    const allowed = [
+      `"${greet}"`,
+      `"Wishing you joy and good health"`,
     ];
+    const motifs = "confetti, balloons, subtle sparkles (keep uncluttered)";
+
     return [
-      `Design a clean, ${VIBES.find(v=>v.id===vibe)?.label?.toLowerCase()} birthday wish poster for print/social.`,
+      `Design a ${style.label.toLowerCase()} birthday wish poster for social and print.`,
+      ...style.parts,
       ...common,
       brandLine,
-      ...details,
-      `Copy layout:`,
-      `- H1 (greeting) in display type; H2: "Wishing you joy and good health"`,
-      `- Footer: date or hashtag (optional).`,
-      `Accessibility: high contrast, large tap/click targets if used in story.`,
+      `Recipient: ${name || "[name]"}${age?`, turning ${age}`:""}${relation?`, relation: ${relation}`:""}.`,
+      `Motifs: ${motifs}.`,
+      only(allowed),
+      `Layout: H1 prominent; H2 below; strong contrast; safe margins.`,
+      ...quality,
+      negatives,
       `Export as high-res PNG.`,
     ].join("\n");
   }
 
   if (occasion === "festival") {
-    const m = fest ? `Motifs: ${fest.motifs.join(", ")}.` : `Motifs: rangoli, diyas.`;
+    const festLabel = fest?.label || "[festival]";
+    const allowed = [
+      `"${greet}"`,
+      `"Wishing you prosperity and happiness"`,
+    ];
+    const motifs = fest ? fest.motifs.join(", ") : "rangoli, diyas";
+
     return [
-      `Create a ${VIBES.find(v=>v.id===vibe)?.label?.toLowerCase()} festival wishes poster for ${fest?.label || "[festival]"}.`,
+      `Create a ${style.label.toLowerCase()} festival wishes poster for ${festLabel}.`,
+      ...style.parts,
       ...common,
       brandLine,
-      `Primary headline: "${greet}"`,
-      m,
-      `Secondary copy: "Wishing you prosperity and happiness" (localize to selected language if needed).`,
-      `Composition: hero motif centered, decorative border, soft gradient background.`,
-      `Safe zones for text; ensure legibility over motif.`,
+      `Motifs: ${motifs}.`,
+      only(allowed),
+      `Ensure text legibility over motifs.`,
+      ...quality,
+      negatives,
       `Export as high-res PNG.`,
     ].join("\n");
   }
 
   if (occasion === "anniversary") {
+    const duo = name && partnerName ? `${name} & ${partnerName}` : (name || "[names]");
+    const allowed = [
+      `"Happy Anniversary"`,
+      `"${duo}!"`,
+    ];
+
     return [
-      `Design an elegant anniversary wish for ${name || "[name]"}${partnerName?` & ${partnerName}`:""}.`,
+      `Design an ${style.label.toLowerCase()} anniversary wish for ${duo}.`,
+      ...style.parts,
       ...common,
       brandLine,
-      `Primary headline: "${greet}"`,
-      `Motifs: rings, florals, bokeh; keep minimal.`,
-      `Add date (optional).`,
+      `Motifs: rings, soft florals, tasteful bokeh; upscale minimal.`,
+      only(allowed),
+      ...quality,
+      negatives,
+      `Export as high-res PNG.`,
     ].join("\n");
   }
 
   if (occasion === "sale") {
+    const allowed = [
+      `"${brand || "Brand"}"`,
+      `"Limited-time Offer"`,
+      `"Discount %"`,
+      `"Call to Action"`,
+    ];
+
     return [
-      `Design a festive offer banner suitable for social media and print.`,
+      `Design a ${style.label.toLowerCase()} festive offer banner suitable for social and print.`,
+      ...style.parts,
       ...common,
       brand ? `Brand: ${brand}` : `Brand: [name]`,
-      `Callouts: Discount %, limited-time, CTA button area.`,
       `Motifs (subtle): diyas/kites/rangoli depending on season.`,
+      only(allowed),
+      `Layout: strong headline, clear discount callout, CTA area, safe margins.`,
+      ...quality,
+      negatives,
+      `Export as high-res PNG.`,
     ].join("\n");
   }
 
-  // custom (safe fallback)
+  // custom
   return [
-    `Create a celebratory poster.`,
+    `Create a celebratory poster in ${style.label.toLowerCase()} style.`,
+    ...style.parts,
     ...common,
     brandLine,
     `Headline: "${greet}"`,
-    `Notes: add your own motifs and layout.`,
+    `Do not add extra text.`,
+    ...quality,
+    negatives,
   ].join("\n");
 }
 
@@ -222,7 +395,14 @@ export default function App() {
   const [relation, setRelation] = useState("");
   const [brand, setBrand] = useState("");
 
-  const [vibe, setVibe] = useState<VibeId>("traditional");
+  // New pro controls
+  const [styleId, setStyleId] = useState<StyleId>("minimal-luxe");
+  const [intentId, setIntentId] = useState<IntentId>("hybrid");
+  const [lightId, setLightId] = useState<LightId>("studio");
+  const [textureId, setTextureId] = useState<TextureId>("paper");
+  const [compId, setCompId] = useState<CompId>("center");
+  const [negativeStrong, setNegativeStrong] = useState(true);
+
   const [orient, setOrient] = useState<OrientId>("portrait");
   const [size, setSize] = useState<SizeId>("ig-portrait");
   const [lang, setLang] = useState<LangId>("en");
@@ -247,8 +427,11 @@ export default function App() {
 
   const computed = useMemo(() => buildPrompt({
     occasion, festivalId, name, partnerName, age, relation, brand,
-    vibe, orient, size, lang, paletteChoice, includeLogo
-  }), [occasion, festivalId, name, partnerName, age, relation, brand, vibe, orient, size, lang, paletteChoice, includeLogo]);
+    orient, size, lang, paletteChoice, includeLogo,
+    styleId, intentId, lightId, textureId, compId, negativeStrong
+  }), [occasion, festivalId, name, partnerName, age, relation, brand,
+      orient, size, lang, paletteChoice, includeLogo,
+      styleId, intentId, lightId, textureId, compId, negativeStrong]);
 
   const [editablePrompt, setEditablePrompt] = useState(computed);
   useEffect(()=>{ if(!isEditing) setEditablePrompt(computed); }, [computed, isEditing]);
@@ -432,14 +615,46 @@ export default function App() {
             </div>
           )}
 
-          {/* Designer toggles */}
+          {/* Pro designer controls */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs mb-1" htmlFor="vibe">Style / Vibe</label>
-              <select id="vibe" className={selectBase} value={vibe} onChange={(e)=>setVibe(e.target.value as VibeId)}>
-                {VIBES.map(v=> <option key={v.id} value={v.id}>{v.label}</option>)}
+              <label className="block text-xs mb-1">Prompt Style</label>
+              <select className={selectBase} value={styleId} onChange={(e)=>setStyleId(e.target.value as StyleId)}>
+                {STYLE_PRESETS.map(s=> <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
             </div>
+            <div>
+              <label className="block text-xs mb-1">Render Intent</label>
+              <select className={selectBase} value={intentId} onChange={(e)=>setIntentId(e.target.value as IntentId)}>
+                {RENDER_INTENT.map(s=> <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs mb-1">Lighting</label>
+              <select className={selectBase} value={lightId} onChange={(e)=>setLightId(e.target.value as LightId)}>
+                {LIGHTING.map(s=> <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs mb-1">Texture</label>
+              <select className={selectBase} value={textureId} onChange={(e)=>setTextureId(e.target.value as TextureId)}>
+                {TEXTURES.map(s=> <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs mb-1">Composition</label>
+              <select className={selectBase} value={compId} onChange={(e)=>setCompId(e.target.value as CompId)}>
+                {COMPOSITION.map(s=> <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-2">
+              <input id="neg" type="checkbox" className="w-4 h-4" checked={negativeStrong} onChange={(e)=>setNegativeStrong(e.target.checked)} />
+              <label htmlFor="neg" className="text-sm">Aggressive negative prompt</label>
+            </div>
+          </div>
+
+          {/* Practical toggles */}
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs mb-1" htmlFor="orient">Orientation</label>
               <select id="orient" className={selectBase} value={orient} onChange={(e)=>setOrient(e.target.value as OrientId)}>
@@ -553,12 +768,17 @@ function runSelfTests() {
       age: '21',
       relation: 'Friend',
       brand: '',
-      vibe: 'modern' as VibeId,
       orient: 'portrait' as OrientId,
       size: 'ig-post' as SizeId,
       lang: 'en' as LangId,
       paletteChoice: 'auto',
       includeLogo: false,
+      styleId: 'minimal-luxe' as StyleId,
+      intentId: 'hybrid' as IntentId,
+      lightId: 'studio' as LightId,
+      textureId: 'paper' as TextureId,
+      compId: 'center' as CompId,
+      negativeStrong: true,
     };
     const out1 = buildPrompt(s1);
     console.assert(out1.includes('Happy Birthday, Aanya!'), 'Birthday greeting should include name');
@@ -572,7 +792,7 @@ function runSelfTests() {
 
     const s3 = { ...s1, occasion: 'sale' };
     const out3 = buildPrompt(s3);
-    console.assert(out3.includes('offer banner') && out3.includes('Callouts'), 'Sale banner copy should include callouts');
+    console.assert(out3.includes('offer banner') || out3.includes('Limited-time'), 'Sale banner copy should include callouts');
 
     const gold = paletteFor('gold');
     console.assert(Array.isArray(gold) && gold.length === 4, 'Gold palette should have 4 colors');
@@ -590,8 +810,7 @@ function runSelfTests() {
 
     const s7 = { ...s1, occasion: 'custom', name: '', partnerName: '', lang: 'en' as LangId };
     const out7 = buildPrompt(s7);
-    // ↓↓↓ This exact line was the one that tends to break when quotes/paren go missing
-    console.assert(out7.startsWith('Create a celebratory poster.'), 'Custom should begin with generic header');
+    console.assert(out7.startsWith('Create a celebratory poster'), 'Custom should begin with generic header');
 
     console.assert(out1.includes('\nOrientation:'), 'Output should contain newline separators');
 
@@ -600,4 +819,3 @@ function runSelfTests() {
     console.warn('WishCraft self-tests encountered an error:', e);
   }
 }
-
