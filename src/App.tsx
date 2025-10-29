@@ -147,7 +147,7 @@ function buildPrompt(state: {
     `Size: ${SIZE_PRESETS.find(s=>s.id===size)?.label || size}`,
     `Vibe: ${VIBES.find(v=>v.id===vibe)?.label}`,
     `Language for headline: ${LANGS.find(l=>l.id===lang)?.label}`,
-    `Color palette: ${joinPalette(palette)}`,
+    `Color palette: ${joinPalette(palette)} (guidance only; do not render hex codes or palette names as text in the artwork)`,
   ];
   const brandLine = includeLogo && brand ? `Include ${brand} logo at top-right; maintain clear space.` : `Branding: none / optional placeholder`;
 
