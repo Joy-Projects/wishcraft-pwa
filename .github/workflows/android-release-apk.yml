@@ -1,0 +1,164 @@
+name: Build Android APK (Release)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Node with cache if a lockfile exists, otherwise no-cache
+      - name: Setup Node (with cache)
+        if: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json', '**/yarn.lock') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Node (no cache)
+        if: ${{ hashFiles('**/package-lock.json', '**/npm-shrinkwrap.json', '**/yarn.lock') == '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java (JDK 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android licenses
+        run: yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses
+
+      - name: Install Android platform & build tools
+        env:
+          SDKMAN: ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager
+          ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          set -euxo pipefail
+          for i in 1 2 3 4 5; do
+            yes | "$SDKMAN" --sdk_root="$ROOT" \
+              "platform-tools" \
+              "platforms;android-34" \
+              "build-tools;34.0.0" && break || {
+              echo "sdkmanager failed (attempt $i). Retrying in $((i*20))s…"
+              sleep $((i*20))
+            }
+          done
+
+      - name: Install deps
+        run: |
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npm ci --no-audit --fund=false
+          else
+            npm install --no-audit --fund=false
+          fi
+
+      - name: Ensure PWA Icons (safe)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update && sudo apt-get install -y imagemagick
+          mkdir -p public/icons
+          if [ -f public/icon.png ]; then SRC=public/icon.png
+          elif [ -f public/icons/icon-512.png ]; then SRC=public/icons/icon-512.png
+          else
+            convert -size 512x512 xc:"#4f46e5" public/icon-source.png
+            SRC=public/icon-source.png
+          fi
+          convert "$SRC" -resize 192x192 public/icons/icon-192.png
+          convert "$SRC" -resize 512x512 public/icons/icon-512.png
+          cp public/icons/icon-192.png public/icons/maskable-192.png
+          cp public/icons/icon-512.png public/icons/maskable-512.png
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Ensure Capacitor toolchain
+        run: |
+          if ! npx --yes --package=@capacitor/cli@6 cap --version >/dev/null 2>&1; then
+            npm i -D @capacitor/cli@6
+          fi
+          if ! npm ls @capacitor/android >/dev/null 2>&1; then
+            npm i -D @capacitor/android@6
+          fi
+
+      - name: Add Android platform (Capacitor)
+        run: |
+          npx cap add android || true
+          npx cap sync android
+          chmod +x android/gradlew
+
+      # ----------- Signing (uses the secrets you already created) -----------
+      - name: Restore keystore from secret
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/release.keystore
+
+      - name: Write signing values to gradle.properties
+        run: |
+          cat >> android/gradle.properties <<'EOF'
+          MYAPP_STORE_FILE=release.keystore
+          MYAPP_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}
+          MYAPP_STORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MYAPP_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Compute version from package.json
+        id: ver
+        run: |
+          NAME=$(node -p "require('./package.json').version || '1.0.0'")
+          CODE=$(node -e "v=require('./package.json').version||'1.0.0'; p=v.split('.').map(n=>parseInt(n||0,10)); c=p[0]*10000+p[1]*100+p[2]; console.log(c)")
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+
+      - name: Inject signing + version into Gradle
+        run: |
+          cat > android/app/signing.gradle <<'GRADLE'
+          android {
+            defaultConfig {
+              versionCode Integer.valueOf(System.getenv("APP_VERSION_CODE") ?: "1")
+              versionName (System.getenv("APP_VERSION_NAME") ?: "1.0.0")
+            }
+            signingConfigs {
+              release {
+                storeFile rootProject.file(MYAPP_STORE_FILE)
+                storePassword MYAPP_STORE_PASSWORD
+                keyAlias MYAPP_KEY_ALIAS
+                keyPassword MYAPP_KEY_PASSWORD
+              }
+            }
+            buildTypes {
+              release {
+                signingConfig signingConfigs.release
+                minifyEnabled false
+                shrinkResources false
+              }
+            }
+          }
+          GRADLE
+          sed -i '1s;^;apply from: "signing.gradle"\n;' android/app/build.gradle
+        env:
+          APP_VERSION_NAME: ${{ steps.ver.outputs.name }}
+          APP_VERSION_CODE: ${{ steps.ver.outputs.code }}
+
+      - name: Assemble release APK
+        working-directory: android
+        env:
+          APP_VERSION_NAME: ${{ steps.ver.outputs.name }}
+          APP_VERSION_CODE: ${{ steps.ver.outputs.code }}
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WishCraft-APK-release
+          path: android/app/build/outputs/apk/release/app-release.apk
